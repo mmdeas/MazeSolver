@@ -178,6 +178,8 @@ public class MazeSolver
 		public void action()
 		{
 			suppressed = false;
+			Thread rt = new Thread(reverseSound);
+			rt.start();
 			maze.backtrack();
 			while (!suppressed)
 			{
@@ -187,8 +189,9 @@ public class MazeSolver
 				dp.steerBackward(diff * STEER_SCALE);
 				dp.setTravelSpeed(SPEED_SCALE/diff);
 				if (Math.abs(right - left) < 5 && right < 35 && left < 35)
-					return;
+					break;
 			}
+			rt.interrupt();
 		}
 
 		public void suppress() { suppressed = true; }
@@ -280,29 +283,57 @@ public class MazeSolver
 		}
 
 		// maze status
-		public static void setEdge(int x, int y, boolean blocked)
+		public void setEdge(int x, int y, boolean blocked)
 		{
 			maze[x][y] = blocked ? 0 : 1;
 			LCD.setPixel((y%2)? x : x+1, y, blocked ? 0 : 1);
 		}
 
-		public static void setRelativeEdge(float a, int distance, boolean blocked)
+		public void setRelativeEdge(float a, int distance, boolean blocked)
 		{
-			int newHeading;
-			if (45 < a && a < 135)
-				newHeading = 1;
-			else if (135 < a && 180 + 45)
-				newHeading = 2;
-			else if (270 - 45 < a && a < 270 + 45)
-				newHeading = 3;
-			else
-				newHeading = 0;
+			int edgeX, edgeY;
+			switch (globalHeadingFromAngle(a))
+			{
+				case 0:
+					edgeX = robotX;
+					edgeY = 2 * robotY;
+					break;
+				case 1:
+					edgeX = robotX - 1;
+					edgeY = 2 * robotY;
+					break;
+				case 2:
+					edgeX = robotX;
+					edgeY = 2 * robotY - 1;
+					break;
+				case 3:
+					edgeX = robotX + 1;
+					edgeY = 2 * robotY;
+					break;
+			}
 
-			// TODO: logic here for changing robot to edge coords
+			setEdge(edgeX, edgeY, blocked);
+		}
+
+		public void setRelativeHeading(float a)
+		{
+			heading = globalHeadingFromAngle(a);
+		}
+
+		private int globalHeadingFromAngle(float a)
+		{
+			if (45 < a && a < 135)
+				return (heading + 1) % 4;
+			else if (135 < a && 180 + 45)
+				return (heading + 2) % 4;
+			else if (270 - 45 < a && a < 270 + 45)
+				return (heading + 3) % 4;
+			else
+				return heading;
 		}
 
 		// robot position status
-		public static forward()
+		public void forward()
 		{
 			switch (heading)
 			{
@@ -321,7 +352,7 @@ public class MazeSolver
 			}
 		}
 
-		public static backward()
+		public void backward()
 		{
 			switch (heading)
 			{
