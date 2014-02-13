@@ -1,17 +1,24 @@
 import java.lang.Thread;
+import java.util.ArrayList;
+import java.util.EmptyStackException;
+import java.util.HashSet;
+import java.util.Queue;
+import java.util.Stack;
 
 import lejos.nxt.Button;
 import lejos.nxt.LCD;
 import lejos.nxt.LightSensor;
 import lejos.nxt.Motor;
 import lejos.nxt.SensorPort;
+import lejos.nxt.Sound;
+import lejos.nxt.UltrasonicSensor;
 import lejos.robotics.navigation.DifferentialPilot;
 import lejos.robotics.subsumption.Arbitrator;
 import lejos.robotics.subsumption.Behavior;
 
 public class MazeSolver
 {
-	private static final Maze maze;
+	private static Maze maze;
 
 	// Sensors
 	private static final LightSensor leftLight = new LightSensor(SensorPort.S2);
@@ -20,9 +27,9 @@ public class MazeSolver
 
 	// Robot Constants
 	private static final int TRACK_SIZE = 56; //mm
-	private static final int ROBOT_WIDTH = 174; //mm
+	private static final int ROBOT_WIDTH = 170; //mm
 	private static final int SONAR_TRUSTED_DISTANCE = 30; //cm
-	private static final int AXLE_TO_LIGHTS = 68; //mm
+	private static final int AXLE_TO_LIGHTS = 65; //mm
 	private static final int AXLE_TO_SONAR = 80; //mm
 
 	// Motor
@@ -31,22 +38,28 @@ public class MazeSolver
 												TRACK_SIZE,
 												ROBOT_WIDTH,
 												Motor.C, //Left
-												Motor.B, //Right
+												Motor.A, //Right
 												false
 												);
 
 	// Behaviour Constants
 	private static final double STEER_SCALE = 300.0 / 20.0;
 	private static final double SPEED_SCALE = dp.getMaxTravelSpeed() / 3;
+	private static final double SPEED = dp.getMaxTravelSpeed() / 8;
+	
+	private static int right;
+	private static int left;
 
 	public static void main(String[] args)
 	{
 		// Behaviors ordered least to greatest priority
-		Behavior[] bees = {followLine, mapJunction, backtrack};
+		Behavior[] bees = {followLine, mapJunction};//, backtrack};
 		Arbitrator arbieTheExplorer = new Arbitrator(bees);
 		LCD.drawString("Place me at A.", 0, 0);
 		Button.waitForAnyPress();
 		LCD.clearDisplay();
+		right = rightLight.readValue();
+		left = leftLight.readValue();
 		maze = new Maze(7, 7);
 		arbieTheExplorer.start();
 	}
@@ -58,11 +71,9 @@ public class MazeSolver
 		@Override
 		public boolean takeControl()
 		{
-			int right = rightLight.readValue();
-			int left = leftLight.readValue();
 			if (Math.abs(right - left) < 5
-				&& right < 35
-				&& left < 35)
+				&& right < 40
+				&& left < 40)
 			{
 				return true;
 			}
@@ -72,15 +83,18 @@ public class MazeSolver
 		@Override
 		public void action()
 		{
+			suppressed = false;
 			dp.travel(AXLE_TO_LIGHTS);
 			dp.rotate(360, true);
 			boolean leftWasWhite = true;
 			boolean rightWasWhite = true;
+			ArrayList<Float> leftAngles = new ArrayList<Float>();
+			ArrayList<Float> rightAngles = new ArrayList<Float>();
 			while (!suppressed && dp.isMoving())
 			{
 				//TODO: can do this without storing all values
-				int l = lightLeft.readValue();
-				int r = lightRight.readValue();
+				int l = leftLight.readValue();
+				int r = rightLight.readValue();
 				if (l < 40 && leftWasWhite)
 				{
 					leftAngles.add(dp.getAngleIncrement());
@@ -127,7 +141,18 @@ public class MazeSolver
 				}
 			}
 
-			Collections.sort(angles);
+			for (int i = 0; i < angles.size(); i++)
+			{
+				for (int j = 1; j < angles.size() - i; j++)
+				{
+					if (angles.get(j-1) > angles.get(j))
+					{
+						float tmp = angles.get(j-1);
+						angles.set(j-1, angles.get(j));
+						angles.set(j, tmp);
+					}
+				}
+			}
 			// angles should now be forward, left, back, right
 
 			float previous = 0.0f;
@@ -177,8 +202,13 @@ public class MazeSolver
 			maze.forward();
 			float a = angles.get(h);
 			dp.rotate(a - previous);
+			left = leftLight.readValue();
+			right = rightLight.readValue();
 		}
-	}
+
+		@Override
+		public void suppress() { suppressed = true; }
+	};
 
 	private static Behavior backtrack = new Behavior()
 	{
@@ -187,7 +217,7 @@ public class MazeSolver
 		@Override
 		public boolean takeControl()
 		{
-			if (sonar.getDistance < 2)
+			if (sonar.getDistance() < 2)
 				return true;
 			return false;
 		}
@@ -198,7 +228,7 @@ public class MazeSolver
 			suppressed = false;
 			Thread rt = new Thread(reverseSound);
 			rt.start();
-			maze.backtrack();
+			maze.backward();
 			while (!suppressed)
 			{
 				int right = rightLight.readValue();
@@ -213,7 +243,7 @@ public class MazeSolver
 		}
 
 		public void suppress() { suppressed = true; }
-	}
+	};
 
 	private static Behavior followLine = new Behavior()
 	{
@@ -229,9 +259,11 @@ public class MazeSolver
 			suppressed = false;
 			while (!suppressed)
 			{
-				int diff = lightRight.readValue() - leftLight.readValue();
+				right = rightLight.readValue();
+				left = leftLight.readValue();
+				int diff = right - left;
 				dp.steer(diff * STEER_SCALE);
-				dp.setTravelSpeed(SPEED_SCALE/diff)
+				dp.setTravelSpeed(SPEED);
 			}
 		}
 
@@ -257,9 +289,9 @@ public class MazeSolver
 				}
 			}
 		}
-	}
+	};
 
-	private class Maze
+	private static class Maze
 	{
 		private boolean flashOn;
 		private int[][] maze;
@@ -288,10 +320,12 @@ public class MazeSolver
 				maze[width-1][j] = j == height-1 ? 1 : 0;
 			}
 
+			/*
 			flashOn = true;
 			flashThread = new Thread(flasher);
 			flashThread.setPriority(Thread.MIN_PRIORITY);
 			flashThread.start();
+			*/
 			for (int i = 0; i < width*2; i+=2)
 			{
 				for (int j = 0; j < height; j+=2)
@@ -315,9 +349,10 @@ public class MazeSolver
 			HashSet<Integer> visited = new HashSet<Integer>();
 			BfsNode root = new BfsNode(null, robotX, robotY, -1);
 			leaves.push(root);
+			visited.add(0);
 			while (!leaves.empty())
 			{
-				BfsNode n = leaves.pop();
+				BfsNode n = (BfsNode) leaves.pop();
 				int h = n.expand();
 				if (h != -1)
 				{
@@ -326,7 +361,11 @@ public class MazeSolver
 				}
 				for (BfsNode child : n.children)
 				{
-					leaves.add(child);
+					if (!visited.contains((child.junctionX << 8 + child.junctionY)))
+					{
+						visited.add((child.junctionX << 8 + child.junctionY));
+						leaves.push(child);
+					}
 				}
 			}
 			return false;
@@ -355,10 +394,12 @@ public class MazeSolver
 					int e = getEdge(junctionX, junctionY, i);
 					if (e == -1)
 						return i;
-					int newy = junctionY;
-					int newx = junctionX;
-					case (i)
+					if (e == 1)
 					{
+						int newy = junctionY;
+						int newx = junctionX;
+						switch (i)
+						{
 						case 0:
 							newy++;
 							break;
@@ -371,13 +412,14 @@ public class MazeSolver
 						case 3:
 							newx++;
 							break;
+						}
+						children.add(new BfsNode(this, newx, newy, i));
 					}
-					children.add(new BfsNode(this, newx, newy, i));
 				}
 				return -1;
 			}
 
-			public void pathFromRoot(int lastHeading)
+			public Stack<Integer> pathFromRoot(int lastHeading)
 			{
 				Stack<Integer> path = new Stack<Integer>();
 				path.push(lastHeading);
@@ -387,6 +429,7 @@ public class MazeSolver
 					path.push(node.headingFromParent);
 					node = node.parent;
 				}
+				return path;
 			}
 		}
 
@@ -394,12 +437,13 @@ public class MazeSolver
 		public void setEdge(int x, int y, boolean blocked)
 		{
 			maze[x][y] = blocked ? 0 : 1;
-			LCD.setPixel((y%2)? x : x+1, y, blocked ? 0 : 1);
+			LCD.setPixel((y%2)==1 ? x : x+1, y, blocked ? 0 : 1);
 		}
 
 		public void setRelativeEdge(float a, int distance, boolean blocked)
 		{
 			int edgeX, edgeY;
+			edgeX = edgeY = 0;
 			switch (globalHeadingFromAngle(a))
 			{
 				case 0:
@@ -418,15 +462,20 @@ public class MazeSolver
 					edgeX = robotX + 1;
 					edgeY = 2 * robotY;
 					break;
+				default:
+					Sound.beep();
+					Sound.buzz();
 			}
 
 			setEdge(edgeX, edgeY, blocked);
 		}
 
-		private void getEdge(int x, int y, int heading)
+		private int getEdge(int x, int y, int heading)
 		{
-			switch (heading)
+			try
 			{
+				switch (heading)
+				{
 				case 0:
 					return maze[x][2*y];
 				case 1:
@@ -435,6 +484,15 @@ public class MazeSolver
 					return maze[x][2*y-1];
 				case 3:
 					return maze[x+1][2*y];
+				default:
+					Sound.beep();
+					Sound.buzz();
+					return -255;
+				}
+			}
+			catch (Exception e)
+			{
+				return 0;
 			}
 		}
 
@@ -447,7 +505,7 @@ public class MazeSolver
 		{
 			if (45 < a && a < 135)
 				return (heading + 1) % 4;
-			else if (135 < a && 180 + 45)
+			else if (135 < a && a < 180 + 45)
 				return (heading + 2) % 4;
 			else if (270 - 45 < a && a < 270 + 45)
 				return (heading + 3) % 4;
@@ -508,7 +566,7 @@ public class MazeSolver
 							if (maze[i][j] == -1)
 							{
 								int x = 2*i;
-								if (!(j % 2))
+								if ((j % 2) == 0)
 									x++;
 								LCD.setPixel(x, j, flashOn ? 1 : 0);
 							}
@@ -518,6 +576,6 @@ public class MazeSolver
 					try { Thread.sleep(500); } catch (InterruptedException e) { break; }
 				}
 			}
-		}
+		};
 	}
 }
