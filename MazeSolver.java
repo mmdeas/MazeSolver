@@ -11,7 +11,7 @@ import lejos.robotics.subsumption.Behavior;
 
 public class MazeSolver
 {
-	private static final Maze maze = new Maze(7, 7);
+	private static final Maze maze;
 
 	// Sensors
 	private static final LightSensor leftLight = new LightSensor(SensorPort.S2);
@@ -42,12 +42,13 @@ public class MazeSolver
 	public static void main(String[] args)
 	{
 		// Behaviors ordered least to greatest priority
-		Behavior[] bees = {followLine, backtrack};
-		Arbitrator arbie = new Arbitrator(bees);
+		Behavior[] bees = {followLine, mapJunction, backtrack};
+		Arbitrator arbieTheExplorer = new Arbitrator(bees);
 		LCD.drawString("Place me at A.", 0, 0);
 		Button.waitForAnyPress();
 		LCD.clearDisplay();
-		arbie.start();
+		maze = new Maze(7, 7);
+		arbieTheExplorer.start();
 	}
 
 	private static Behavior mapJunction = new Behavior()
@@ -109,7 +110,11 @@ public class MazeSolver
 				for (Float r : rightAngles)
 				{
 					if (Math.abs(l - r) < 45 
-							|| (r < 180 && l > 180 && Math.abs(l - r - 360) < 45))
+							|| (r < 180 
+								&& l > 180 
+								&& Math.abs(l - r - 360) < 45
+								)
+						)
 					{
 						if (r < 180 && l > 180)
 							l -= 360;
@@ -158,7 +163,20 @@ public class MazeSolver
 				previous = a;
 			}
 
-			// TODO: choose direction, update maze object
+			int h;
+			try
+			{
+				h = maze.getNextRelativeHeading();
+			}
+			catch (EmptyStackException e)
+			{
+				maze.pathToClosestUnexplored();
+				h = maze.getNextRelativeHeading();
+			}
+			maze.setRelativeHeading(h);
+			maze.forward();
+			float a = angles.get(h);
+			dp.rotate(a - previous);
 		}
 	}
 
@@ -241,7 +259,6 @@ public class MazeSolver
 		}
 	}
 
-	// TODO: add maze changing functionality
 	private class Maze
 	{
 		private boolean flashOn;
@@ -253,6 +270,8 @@ public class MazeSolver
 		private int robotX = 0;
 		private int robotY = 0;
 		private int heading = 0; // 0 = N; 1 = W; 2 = S; 3 = E
+
+		private Stack<Integer> path = new Stack<Integer>();
 
 		public Maze(int width, int height)
 		{
@@ -279,6 +298,95 @@ public class MazeSolver
 				{
 					LCD.setPixel(i, j, 1);
 				}	
+			}
+		}
+
+		// navigation
+		public int getNextRelativeHeading() throws EmptyStackException
+		{
+			int globalHeading = path.pop();
+			return globalHeading - heading;
+		}
+
+		// bfs
+		public boolean pathToClosestUnexplored()
+		{
+			Queue<BfsNode> leaves = new Queue<BfsNode>();
+			HashSet<Integer> visited = new HashSet<Integer>();
+			BfsNode root = new BfsNode(null, robotX, robotY, -1);
+			leaves.push(root);
+			while (!leaves.empty())
+			{
+				BfsNode n = leaves.pop();
+				int h = n.expand();
+				if (h != -1)
+				{
+					path = n.pathFromRoot(h);
+					return true;
+				}
+				for (BfsNode child : n.children)
+				{
+					leaves.add(child);
+				}
+			}
+			return false;
+		}
+
+		private class BfsNode
+		{
+			public final BfsNode parent;
+			public final ArrayList<BfsNode> children = new ArrayList<BfsNode>();
+			public final int junctionX;
+			public final int junctionY;
+			public final int headingFromParent;
+
+			public BfsNode(BfsNode parent, int junctionX, int junctionY, int headingFromParent)
+			{
+				this.parent = parent;
+				this.junctionX = junctionX;
+				this.junctionY = junctionY;
+				this.headingFromParent = headingFromParent;
+			}
+
+			public int expand()
+			{
+				for (int i = 0; i < 4; i++)
+				{
+					int e = getEdge(junctionX, junctionY, i);
+					if (e == -1)
+						return i;
+					int newy = junctionY;
+					int newx = junctionX;
+					case (i)
+					{
+						case 0:
+							newy++;
+							break;
+						case 1:
+							newx--;
+							break;
+						case 2:
+							newy--;
+							break;
+						case 3:
+							newx++;
+							break;
+					}
+					children.add(new BfsNode(this, newx, newy, i));
+				}
+				return -1;
+			}
+
+			public void pathFromRoot(int lastHeading)
+			{
+				Stack<Integer> path = new Stack<Integer>();
+				path.push(lastHeading);
+				BfsNode node = this;
+				while (node.parent != null)
+				{
+					path.push(node.headingFromParent);
+					node = node.parent;
+				}
 			}
 		}
 
@@ -313,6 +421,21 @@ public class MazeSolver
 			}
 
 			setEdge(edgeX, edgeY, blocked);
+		}
+
+		private void getEdge(int x, int y, int heading)
+		{
+			switch (heading)
+			{
+				case 0:
+					return maze[x][2*y];
+				case 1:
+					return maze[x-1][2*y];
+				case 2:
+					return maze[x][2*y-1];
+				case 3:
+					return maze[x+1][2*y];
+			}
 		}
 
 		public void setRelativeHeading(float a)
