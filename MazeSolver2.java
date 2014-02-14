@@ -223,7 +223,7 @@ public class MazeSolver2
 		public void suppress() { suppressed = true; }
 	};
 	
-	private static class Robot
+	public static class Robot
 	{
 		public static int x = 0;
 		public static int y = 0;

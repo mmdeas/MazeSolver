@@ -97,15 +97,32 @@ public class Junction
 		return null;
 	}
 	
-	//TODO: A*
-	/*
+	// A*
 	public Stack<Integer> pathTo(int x, int y)
 	{
-		// No priority queue. :(
-		ArrayList<AstarNode> leaves = new ArrayList<AstarNode>();
-		
+		PriorityQueue<AstarNode> leaves = new PriorityQueue<AstarNode>();
+		Junction goal = maze[x][y];
+		HashSet<Junction> expanded = new HashSet<Junction>();
+		AstarNode root = new AstarNode(null, this, -1, 0, goal);
+		leaves.enqueue(root);
+		while (!leaves.isEmpty)
+		{
+			AstarNode n = leaves.pop();
+			if (expanded.contains(n))
+				continue;
+			if (n.expand())
+				return n.pathFromRoot();
+			expanded.add(n);
+			for (AstarNode child : n.children)
+			{
+				if (!expanded.contains(child))
+				{
+					leaves.add(child);
+				}
+			}
+		}
 	}
-	*/
+
 	private class BFSNode
 	{
 		public final BFSNode parent;
@@ -150,6 +167,7 @@ public class Junction
 	
 	private class AstarNode extends BFSNode implements Comparable<AstarNode>
 	{
+		public final Junction goal;
 		public final int g;
 		public final int f;
 		public AstarNode(AstarNode parent, Junction junction, int headingFromParent, int g, Junction goal)
@@ -157,6 +175,23 @@ public class Junction
 			super(parent, junction, headingFromParent);
 			this.g = g;
 			this.f = g + Math.abs(goal.x - junction.x) + Math.abs(goal.y - junction.y);
+			this.goal = goal;
+		}
+
+		/** Returns true when this node being expanded is the goal. */
+		@Override
+		public boolean expand()
+		{
+			if (junction == goal)
+				return true;
+			for (int i = 0; i < 4; i++)
+			{
+				Status e = junction.getEdge(i);
+				if (e == Status.FREE)
+				{
+					children.add(new AstarNode(this, junction.getJunction(i), i, g + 1, goal));
+				}
+			}
 		}
 		
 		@Override
@@ -165,5 +200,30 @@ public class Junction
 			return new Integer(f).compareTo(new Integer(n.f));
 		}
 		
+	}
+
+	private class PriorityQueue<E extends Comparable>
+	{
+		private final LinkedList<E> queue = new LinkedList<E>();
+
+		public E pop() throws NoSuchElementException
+		{
+			return queue.remove(0);
+		}
+
+		public void enqueue(E e)
+		{
+			for (int i = 0; i < queue.size(); i++)
+			{
+				if (e.compareTo(queue.get(i)) < 0)
+				{
+					queue.add(i, e);
+					return;
+				}
+			}
+			queue.add(e);
+		}
+
+		public boolean isEmpty() { return queue.isEmpty(); }
 	}
 }
