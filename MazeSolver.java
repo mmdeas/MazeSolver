@@ -49,6 +49,7 @@ public class MazeSolver
 	
 	private static int right;
 	private static int left;
+	private static boolean exploring = true;
 
 	public static void main(String[] args)
 	{
@@ -71,7 +72,8 @@ public class MazeSolver
 		@Override
 		public boolean takeControl()
 		{
-			if (Math.abs(right - left) < 5
+			if (exploring
+				&& Math.abs(right - left) < 5
 				&& right < 40
 				&& left < 40)
 			{

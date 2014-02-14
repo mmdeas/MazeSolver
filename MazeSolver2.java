@@ -18,24 +18,25 @@ public class MazeSolver2
 	private static Stack<Integer> path = new Stack<Integer>();
 	
 	// Sensors
-	private static final LightSensor leftLight = new LightSensor(SensorPort.S2);
-	private static final LightSensor rightLight = new LightSensor(SensorPort.S3);
+	private static final LightSensor leftLight = new LightSensor(SensorPort.S3);
+	private static final LightSensor rightLight = new LightSensor(SensorPort.S2);
 	private static final UltrasonicSensor sonar = new UltrasonicSensor(SensorPort.S1);
 
 	// Robot Constants
 	private static final int TRACK_SIZE = 56; //mm
-	private static final int ROBOT_WIDTH = 170; //mm
+	private static final int ROBOT_WIDTH = 174; //mm
 	private static final int SONAR_TRUSTED_DISTANCE = 30; //cm
 	private static final int AXLE_TO_LIGHTS = 65; //mm
 	private static final int AXLE_TO_SONAR = 80; //mm
+	private static final int AWESOME_LEVEL = 83; //au
 
 	// Motor
 	private static DifferentialPilot dp = new DifferentialPilot(
 												TRACK_SIZE,
 												TRACK_SIZE,
 												ROBOT_WIDTH,
-												Motor.C, //Left
-												Motor.A, //Right
+												Motor.B, //Left
+												Motor.C, //Right
 												false
 												);
 
@@ -60,11 +61,41 @@ public class MazeSolver2
 		arbie.start();
 	}
 	
+	/*
+	private static Behavior followPath = new Behavior()
+	{
+		boolean suppressed;
+		
+		@Override
+		public boolean takeControl()
+		{
+			if (!exploring && !path.empty()
+					&& right < 40
+					&& left < 40)
+			{
+				return true;
+			}
+			return false;
+		}
+
+		@Override
+		public void action()
+		{
+			suppressed = false;
+			int heading = Robot.toLocal(path.pop());
+			dp.rotate(-45);
+			
+		}
+
+		@Override
+		public void suppress() { suppressed = true; }
+	};
+	*/
+	
 	private static Behavior mapJunction = new Behavior()
 	{
 		boolean suppressed;
 
-		// Default behaviour: always try to take control
 		@Override
 		public boolean takeControl()
 		{
@@ -80,6 +111,10 @@ public class MazeSolver2
 		@Override
 		public void action()
 		{
+			//!!!
+			LCD.drawInt(Robot.x, 0, 0);
+			LCD.drawInt(Robot.y, 0, 1);
+			//!!!
 			suppressed = false;
 			dp.travel(AXLE_TO_LIGHTS);
 			dp.rotate(360, true);
@@ -92,37 +127,40 @@ public class MazeSolver2
 				//TODO: can do this without storing all values
 				int l = leftLight.readValue();
 				int r = rightLight.readValue();
-				if (l < 40 && leftWasWhite)
+				if (l < 35 && leftWasWhite)
 				{
 					leftAngles.add(dp.getAngleIncrement());
 					leftWasWhite = false;
 				}
-				else if (l > 45)
+				else if (l > 40)
 				{
 					leftWasWhite = true;
 				}
 				
-				if (r < 40 && rightWasWhite)
+				if (r < 35 && rightWasWhite)
 				{
 					rightAngles.add(dp.getAngleIncrement());
 					rightWasWhite = false;
 				}
-				else if (r > 45)
+				else if (r > 40)
 				{
 					rightWasWhite = true;
 				}
 			}
 			if (suppressed)
 				dp.stop();
+			
+			LCD.drawInt(leftAngles.size(), 0, 3);
+			LCD.drawInt(rightAngles.size(), 0, 4);
 
 			ArrayList<Float> angles = new ArrayList<Float>();
 			for (Float l : leftAngles)
 			{
 				for (Float r : rightAngles)
 				{
-					if (Math.abs(l - r) < 45 
-							|| (r < 180 
-								&& l > 180 
+					if (Math.abs(l - r) < 45
+							|| (r < 180
+								&& l > 180
 								&& Math.abs(l - r - 360) < 45
 								)
 						)
@@ -170,7 +208,7 @@ public class MazeSolver2
 
 				min += AXLE_TO_SONAR/10;
 
-				if (min < 30)
+				if (min < SONAR_TRUSTED_DISTANCE)
 					Robot.getJunction().setEdge(Robot.toGlobal(i), Junction.Status.BLOCKED);
 				else
 					Robot.getJunction().setEdge(Robot.toGlobal(i), Junction.Status.FREE);
@@ -190,7 +228,15 @@ public class MazeSolver2
 			}
 			
 			int heading = path.pop();
-			dp.rotate(Robot.toLocal(heading));
+			LCD.drawInt(heading, 4, 0);
+			LCD.drawInt(Robot.toLocal(heading), 4, 1);
+			dp.rotate(Robot.toLocal(heading) - previous);
+			
+			Robot.heading = heading;
+			Robot.forward();
+			
+			left = leftLight.readValue();
+			right = rightLight.readValue();
 		}
 
 		@Override
@@ -232,5 +278,26 @@ public class MazeSolver2
 		public static Junction getJunction() { return maze[x][y]; }
 		public static int toGlobal(int heading) { return (heading + Robot.heading) % 4; }
 		public static int toLocal(int heading) { return (heading - Robot.heading) % 4; }
+		
+		public static void forward()
+		{
+			switch (heading)
+			{
+			case 0:
+				y++;
+				break;
+			case 1:
+				x--;
+				break;
+			case 2:
+				y--;
+				break;
+			case 3:
+				x++;
+				break;
+			default:
+				Sound.beep();
+			}
+		}
 	}
 }

@@ -1,7 +1,11 @@
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.Stack;
+
+import lejos.nxt.LCD;
 
 public class Junction
 {
@@ -54,7 +58,8 @@ public class Junction
 
 	public void setEdge(int heading, Status status)
 	{
-		edges[heading] = status;
+		if (edges[heading] == Status.UNKNOWN)
+			edges[heading] = status;
 	}
 
 	public Status getEdge(int heading)
@@ -75,6 +80,10 @@ public class Junction
 	@SuppressWarnings("deprecation")
 	public Stack<Integer> pathToNearestUnknown()
 	{
+		for (int i = 0; i < 4; i++)
+		{
+			LCD.drawString(getEdge(i).toString(), 0, i+2);
+		}
 		Queue<BFSNode> leaves = new Queue<BFSNode>();
 		HashSet<Junction> visited = new HashSet<Junction>();
 		leaves.push(new BFSNode(null, this, -1));
@@ -105,22 +114,23 @@ public class Junction
 		HashSet<Junction> expanded = new HashSet<Junction>();
 		AstarNode root = new AstarNode(null, this, -1, 0, goal);
 		leaves.enqueue(root);
-		while (!leaves.isEmpty)
+		while (!leaves.isEmpty())
 		{
 			AstarNode n = leaves.pop();
 			if (expanded.contains(n))
 				continue;
 			if (n.expand())
 				return n.pathFromRoot();
-			expanded.add(n);
+			expanded.add(n.junction);
 			for (AstarNode child : n.children)
 			{
 				if (!expanded.contains(child))
 				{
-					leaves.add(child);
+					leaves.enqueue(child);
 				}
 			}
 		}
+		return null;
 	}
 
 	private class BFSNode
@@ -170,6 +180,7 @@ public class Junction
 		public final Junction goal;
 		public final int g;
 		public final int f;
+		public final ArrayList<AstarNode> children = new ArrayList<AstarNode>();
 		public AstarNode(AstarNode parent, Junction junction, int headingFromParent, int g, Junction goal)
 		{
 			super(parent, junction, headingFromParent);
@@ -192,6 +203,7 @@ public class Junction
 					children.add(new AstarNode(this, junction.getJunction(i), i, g + 1, goal));
 				}
 			}
+			return false;
 		}
 		
 		@Override
