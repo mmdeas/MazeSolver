@@ -59,7 +59,11 @@ public class Junction
 	public void setEdge(int heading, Status status)
 	{
 		if (edges[heading] == Status.UNKNOWN)
+		{
 			edges[heading] = status;
+			if (junctions[heading] != null)
+				junctions[heading].setEdge((heading+2) % 4, status);
+		}
 	}
 
 	public Status getEdge(int heading)
@@ -91,6 +95,7 @@ public class Junction
 		while (!leaves.isEmpty())
 		{
 			BFSNode n = (BFSNode) leaves.pop();
+			visited.add(n.junction);
 			if (n.expand())
 			{
 				return n.pathFromRoot();
@@ -117,7 +122,7 @@ public class Junction
 		while (!leaves.isEmpty())
 		{
 			AstarNode n = leaves.pop();
-			if (expanded.contains(n))
+			if (expanded.contains(n.junction))
 				continue;
 			if (n.expand())
 				return n.pathFromRoot();

@@ -18,13 +18,13 @@ public class MazeSolver2
 	private static Stack<Integer> path = new Stack<Integer>();
 	
 	// Sensors
-	private static final LightSensor leftLight = new LightSensor(SensorPort.S3);
-	private static final LightSensor rightLight = new LightSensor(SensorPort.S2);
+	private static final LightSensor leftLight = new LightSensor(SensorPort.S2);
+	private static final LightSensor rightLight = new LightSensor(SensorPort.S3);
 	private static final UltrasonicSensor sonar = new UltrasonicSensor(SensorPort.S1);
 
 	// Robot Constants
 	private static final int TRACK_SIZE = 56; //mm
-	private static final int ROBOT_WIDTH = 174; //mm
+	private static final int ROBOT_WIDTH = 172; //mm
 	private static final int SONAR_TRUSTED_DISTANCE = 30; //cm
 	private static final int AXLE_TO_LIGHTS = 65; //mm
 	private static final int AXLE_TO_SONAR = 80; //mm
@@ -35,14 +35,14 @@ public class MazeSolver2
 												TRACK_SIZE,
 												TRACK_SIZE,
 												ROBOT_WIDTH,
-												Motor.B, //Left
-												Motor.C, //Right
+												Motor.C, //Left
+												Motor.A, //Right
 												false
 												);
 
 	// Behaviour Constants
 	private static final double STEER_SCALE = 300.0 / 20.0;
-	private static final double SPEED = dp.getMaxTravelSpeed() / 8;
+	private static final double SPEED = dp.getMaxTravelSpeed() / 2;
 	
 	private static int right;
 	private static int left;
@@ -127,22 +127,22 @@ public class MazeSolver2
 				//TODO: can do this without storing all values
 				int l = leftLight.readValue();
 				int r = rightLight.readValue();
-				if (l < 35 && leftWasWhite)
+				if (l < 38 && leftWasWhite)
 				{
 					leftAngles.add(dp.getAngleIncrement());
 					leftWasWhite = false;
 				}
-				else if (l > 40)
+				else if (l > 42)
 				{
 					leftWasWhite = true;
 				}
 				
-				if (r < 35 && rightWasWhite)
+				if (r < 38 && rightWasWhite)
 				{
 					rightAngles.add(dp.getAngleIncrement());
 					rightWasWhite = false;
 				}
-				else if (r > 40)
+				else if (r > 42)
 				{
 					rightWasWhite = true;
 				}
@@ -196,7 +196,7 @@ public class MazeSolver2
 			{
 				int j;
 				float a = angles.get(i);
-				dp.rotate(angles.get(i) - previous);
+				dp.rotate(a - previous);
 
 				sonar.ping();
 				int n = sonar.getDistances(echoes);
@@ -207,18 +207,31 @@ public class MazeSolver2
 				}
 
 				min += AXLE_TO_SONAR/10;
+				
+				int globalHeading = Robot.toGlobal(Math.round(a/90));
 
 				if (min < SONAR_TRUSTED_DISTANCE)
-					Robot.getJunction().setEdge(Robot.toGlobal(i), Junction.Status.BLOCKED);
+					Robot.getJunction().setEdge(globalHeading, Junction.Status.BLOCKED);
 				else
-					Robot.getJunction().setEdge(Robot.toGlobal(i), Junction.Status.FREE);
+					Robot.getJunction().setEdge(globalHeading, Junction.Status.FREE);
 
 				previous = a;
 			}
 			
+			if (path == null)
+			{
+				Sound.beep();
+				LCD.drawString("Hello", 0, 0);
+				Button.waitForAnyPress();
+			}
 			if (path.empty())
 			{
 				path = Robot.getJunction().pathToNearestUnknown();
+				if (path.empty())
+				{
+					Sound.beep();
+					Button.waitForAnyPress();
+				}
 				if (path == null)
 				{
 					exploring = false;
@@ -230,7 +243,17 @@ public class MazeSolver2
 			int heading = path.pop();
 			LCD.drawInt(heading, 4, 0);
 			LCD.drawInt(Robot.toLocal(heading), 4, 1);
-			dp.rotate(Robot.toLocal(heading) - previous);
+			float angle = 1080;
+			for (int i = 0; i < angles.size(); i++)
+			{
+				if (Math.abs(angles.get(i) - Robot.toLocal(heading)*90) < 45)
+				{
+					angle = angles.get(i);
+					break;
+				}
+			}
+			
+			dp.rotate(angle - previous);
 			
 			Robot.heading = heading;
 			Robot.forward();
@@ -277,7 +300,7 @@ public class MazeSolver2
 		
 		public static Junction getJunction() { return maze[x][y]; }
 		public static int toGlobal(int heading) { return (heading + Robot.heading) % 4; }
-		public static int toLocal(int heading) { return (heading - Robot.heading) % 4; }
+		public static int toLocal(int heading) { return (heading - Robot.heading + 16) % 4; }
 		
 		public static void forward()
 		{
