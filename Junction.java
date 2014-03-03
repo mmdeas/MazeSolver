@@ -52,7 +52,7 @@ public class Junction
 			setEdge(0, Status.BLOCKED);
 		if (x == 0)
 			setEdge(1, Status.BLOCKED);
-		if (x ==  6)
+		if (x == 6)
 			setEdge(3, Status.BLOCKED);
 	}
 

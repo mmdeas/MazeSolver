@@ -51,17 +51,19 @@ public class MazeSolver2
 	public static void main(String[] args)
 	{
 		// Behaviours ordered least to greatest priority
-		Behavior[] bees = {followLine, mapJunction};
+		Behavior[] bees = {followLine, mapJunction, followPath};
 		Arbitrator arbie = new Arbitrator(bees);
 		LCD.drawString("Place me at A.", 0, 0);
 		Button.waitForAnyPress();
 		LCD.clearDisplay();
 		right = rightLight.readValue();
 		left = leftLight.readValue();
+		dp.setTravelSpeed(SPEED);
+		dp.setRotateSpeed(dp.getMaxRotateSpeed()/2);
 		arbie.start();
 	}
 	
-	/*
+	
 	private static Behavior followPath = new Behavior()
 	{
 		boolean suppressed;
@@ -82,15 +84,126 @@ public class MazeSolver2
 		public void action()
 		{
 			suppressed = false;
-			int heading = Robot.toLocal(path.pop());
-			dp.rotate(-45);
+			dp.travel(AXLE_TO_LIGHTS);
+			dp.rotate(360, true);
+			boolean leftWasWhite = true;
+			boolean rightWasWhite = true;
+			ArrayList<Float> leftAngles = new ArrayList<Float>();
+			ArrayList<Float> rightAngles = new ArrayList<Float>();
+			try { Thread.sleep(250); } catch (InterruptedException e) {}
+			while (!suppressed && dp.isMoving())
+			{
+				//TODO: can do this without storing all values
+				int l = leftLight.readValue();
+				int r = rightLight.readValue();
+				if (l < 38 && leftWasWhite)
+				{
+					leftAngles.add(dp.getAngleIncrement());
+					leftWasWhite = false;
+				}
+				else if (l > 42)
+				{
+					leftWasWhite = true;
+				}
+				
+				if (r < 38 && rightWasWhite)
+				{
+					rightAngles.add(dp.getAngleIncrement());
+					rightWasWhite = false;
+				}
+				else if (r > 42)
+				{
+					rightWasWhite = true;
+				}
+			}
+			if (suppressed)
+				dp.stop();
 			
+			LCD.drawInt(leftAngles.size(), 0, 3);
+			LCD.drawInt(rightAngles.size(), 0, 4);
+
+			ArrayList<Float> angles = new ArrayList<Float>();
+			for (Float l : leftAngles)
+			{
+				for (Float r : rightAngles)
+				{
+					if (Math.abs(l - r) < 45
+							|| (r < 180
+								&& l > 180
+								&& Math.abs(l - r - 360) < 45
+								)
+						)
+					{
+						if (r < 180 && l > 180)
+							l -= 360;
+						float a = (l + r) / 2;
+						if (a > 360 - 45)
+							a -= 360;
+						angles.add((l + r) / 2);
+						break;
+					}
+				}
+			}
+
+			for (int i = 0; i < angles.size(); i++)
+			{
+				for (int j = 1; j < angles.size() - i; j++)
+				{
+					if (angles.get(j-1) > angles.get(j))
+					{
+						float tmp = angles.get(j-1);
+						angles.set(j-1, angles.get(j));
+						angles.set(j, tmp);
+					}
+				}
+			}
+			// angles should now be forward, left, back, right
+			
+			if (path == null)
+			{
+				Sound.beep();
+				LCD.drawString("Hello", 0, 0);
+				Button.waitForAnyPress();
+			}
+			if (path.empty())
+			{
+				if (Robot.getJunction() == maze[0][0])
+				{
+					path = Robot.getJunction().pathTo(4, 4);
+				}
+				else
+				{
+					Sound.beep();
+					dp.rotate(-1080);
+					return;
+				}
+			}
+			
+			int heading = path.pop();
+			LCD.drawInt(heading, 4, 0);
+			LCD.drawInt(Robot.toLocal(heading), 4, 1);
+			float angle = 1080;
+			for (int i = 0; i < angles.size(); i++)
+			{
+				if (Math.abs(angles.get(i) - Robot.toLocal(heading)*90) < 45)
+				{
+					angle = angles.get(i);
+					break;
+				}
+			}
+			
+			dp.rotate(angle);
+			
+			Robot.heading = heading;
+			Robot.forward();
+			
+			left = leftLight.readValue();
+			right = rightLight.readValue();
 		}
 
 		@Override
 		public void suppress() { suppressed = true; }
 	};
-	*/
 	
 	private static Behavior mapJunction = new Behavior()
 	{
@@ -227,15 +340,19 @@ public class MazeSolver2
 			if (path.empty())
 			{
 				path = Robot.getJunction().pathToNearestUnknown();
-				if (path.empty())
-				{
-					Sound.beep();
-					Button.waitForAnyPress();
-				}
 				if (path == null)
 				{
 					exploring = false;
 					Sound.beep();
+					path = Robot.getJunction().pathTo(0, 0);
+					return;
+				}
+				if (path.empty())
+				{
+					dp.rotate(-previous);
+					dp.travel(-2*AXLE_TO_LIGHTS);
+					left = leftLight.readValue();
+					right = rightLight.readValue();
 					return;
 				}
 			}
@@ -284,7 +401,6 @@ public class MazeSolver2
 				left = leftLight.readValue();
 				int diff = right - left;
 				dp.steer(diff * STEER_SCALE);
-				dp.setTravelSpeed(SPEED);
 			}
 		}
 
@@ -317,6 +433,27 @@ public class MazeSolver2
 				break;
 			case 3:
 				x++;
+				break;
+			default:
+				Sound.beep();
+			}
+		}
+		
+		public static void backward()
+		{
+			switch (heading)
+			{
+			case 0:
+				y--;
+				break;
+			case 1:
+				x++;
+				break;
+			case 2:
+				y--;
+				break;
+			case 3:
+				x--;
 				break;
 			default:
 				Sound.beep();
